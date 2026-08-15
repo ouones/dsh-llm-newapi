@@ -1,7 +1,5 @@
 # @deepseek-ai/dsh-llm-newapi
 
-[English](README.md) | 中文
-
 harness LLM（大语言模型）seam 的 LLM 适配器，直接与自托管 [New API](https://newapi-docs.vercel.app/) 网关——例如 `https://gateway.example.com` 这类 OpenAI/Anthropic 兼容中转——通过纯 `fetch` + SSE（由 `eventsource-parser` 分帧）通信。一个插件实例拥有一份以路由为键的提供方 profile 字典，每条路由点名一个网关；请求使用 `GenerateOptions.provider` 选择路由，并针对该路由的 catalog 解析 `GenerateOptions.model`。
 
 本包存在的原因是 `llm-pi-ai` 适配器会误判自定义网关 URL：对任何未被其 URL 检测归类为「非标准」的端点，pi-ai 都会猜测 `compat.supportsDeveloperRole: true`，于是推理模型会把系统提示以 `role: "developer"` 发送——而大多数 New API 上游会以 HTTP 400 拒绝。llm-newapi 对每个模型**强制**注入安全 compat（`supportsDeveloperRole: false`、`supportsStore: false`、`maxTokensField: 'max_tokens'`），因此同一网关无需改代码或改配置即可工作；只有部署确定自己的上游接受更多时，才显式选择加入。
@@ -33,10 +31,10 @@ dsh --version
 将插件安装到你实际运行的 profile。以下命令以 DSH 的 `web` profile 为例：
 
 ```sh
-dsh plugin --profile web add github:ouones/dsh-llm-newapi#22d602b5a2ba293bec4b44e30f1bb45100572252
+dsh plugin --profile web add github:ouones/dsh-llm-newapi
 ```
 
-该命令安装指定的已审核提交，并将 bundle 加入该 profile。仓库包含预构建 `lib/`，且不声明 `prepare` 脚本，所以不需要配置 pnpm `allowBuilds`。
+该命令安装仓库 `main` 分支的当前版本，并将 bundle 加入该 profile。仓库包含预构建 `lib/`，且不声明 `prepare` 脚本，所以不需要配置 pnpm `allowBuilds`。
 
 用以下命令确认 DSH 已组合插件：
 
@@ -46,7 +44,7 @@ dsh --profile web --dump-config
 
 输出中应包含 `id: llm-newapi`。运行 `dsh --profile web` 启动 Web profile，然后打开 **Settings → Models**，添加 **NewAPI** 提供方，填写网关基础 URL 与 API 密钥，选择模型并保存。密钥由 DSH 的 credentials 服务保存，profile 设置只保留其引用。
 
-若使用其他 profile，请把上述两处 `web` 都替换为该 profile 名称。生产 profile 应固定到这里展示的提交；不要使用会移动的分支名。
+若使用其他 profile，请把上述两处 `web` 都替换为该 profile 名称。
 
 ## 配置
 
