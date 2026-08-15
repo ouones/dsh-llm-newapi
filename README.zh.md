@@ -24,33 +24,29 @@ harness LLM（大语言模型）seam 的 LLM 适配器，直接与自托管 [New
 
 ## 安装
 
-适配器是普通的 dsh 插件，因此插件行能挂载的地方它都能挂载。要在本地源码检出中试用，把它加进一个 Web overlay 并以该 patch 启动：
-
-```yaml
-# scratch-plugin/cordis.yml
-- insert:
-    - id: llm-newapi
-      name: '/absolute/path/to/deepseek-harness/packages/llm/llm-newapi'
-      config:
-        providers:
-          my-gateway:
-            apiKeyEnv: NEWAPI_TEST_TOKEN
-            baseURL: https://gateway.example.com
-            api: openai-completions
-```
+本插件要求已经安装 DSH。先确认 `dsh` 命令可用：
 
 ```sh
-pnpm dsh web --patch ./scratch-plugin/cordis.yml
+dsh --version
 ```
 
-GitHub 发布仓库以 profile bundle 安装，并自动挂载适配器行：
+将插件安装到你实际运行的 profile。以下命令以 DSH 的 `web` profile 为例：
 
 ```sh
-dsh plugin --profile newapi add github:<owner>/dsh-newapi#<commit>
-dsh --profile newapi --dump-config
+dsh plugin --profile web add github:ouones/dsh-llm-newapi#22d602b5a2ba293bec4b44e30f1bb45100572252
 ```
 
-将 `<commit>` 固定为已审核的提交。发布提交包含预构建 `lib/`，且不声明 `prepare` 脚本，因此 pnpm 不需要 `allowBuilds` 条目。插件从 bundle patch 添加的 `cordis.yml` 条目应用默认值。
+该命令安装指定的已审核提交，并将 bundle 加入该 profile。仓库包含预构建 `lib/`，且不声明 `prepare` 脚本，所以不需要配置 pnpm `allowBuilds`。
+
+用以下命令确认 DSH 已组合插件：
+
+```sh
+dsh --profile web --dump-config
+```
+
+输出中应包含 `id: llm-newapi`。运行 `dsh --profile web` 启动 Web profile，然后打开 **Settings → Models**，添加 **NewAPI** 提供方，填写网关基础 URL 与 API 密钥，选择模型并保存。密钥由 DSH 的 credentials 服务保存，profile 设置只保留其引用。
+
+若使用其他 profile，请把上述两处 `web` 都替换为该 profile 名称。生产 profile 应固定到这里展示的提交；不要使用会移动的分支名。
 
 ## 配置
 

@@ -24,33 +24,29 @@ Both adapters target the same seam and can be mounted side by side: each owns it
 
 ## Install
 
-The adapter is a normal dsh plugin, so it mounts wherever plugin rows mount. To try it against a local source checkout, add it to a Web overlay and start with that patch:
-
-```yaml
-# scratch-plugin/cordis.yml
-- insert:
-    - id: llm-newapi
-      name: '/absolute/path/to/deepseek-harness/packages/llm/llm-newapi'
-      config:
-        providers:
-          my-gateway:
-            apiKeyEnv: NEWAPI_TEST_TOKEN
-            baseURL: https://gateway.example.com
-            api: openai-completions
-```
+This plugin requires an existing DSH installation. Confirm that the `dsh` command is available:
 
 ```sh
-pnpm dsh web --patch ./scratch-plugin/cordis.yml
+dsh --version
 ```
 
-A GitHub distribution installs as a profile bundle and mounts its adapter row automatically:
+Install the plugin into the profile you run. The following command uses DSH's `web` profile:
 
 ```sh
-dsh plugin --profile newapi add github:<owner>/dsh-newapi#<commit>
-dsh --profile newapi --dump-config
+dsh plugin --profile web add github:ouones/dsh-llm-newapi#22d602b5a2ba293bec4b44e30f1bb45100572252
 ```
 
-Pin `<commit>` to a reviewed commit. The distribution commit includes prebuilt `lib/` and declares no `prepare` script, so pnpm does not need an `allowBuilds` entry. The plugin applies its defaults from the `cordis.yml` entry its bundle patch adds.
+The command installs the exact reviewed commit and adds the bundle to that profile. It needs no pnpm `allowBuilds` setting because the repository includes prebuilt `lib/` and declares no `prepare` script.
+
+Verify that DSH composed the plugin:
+
+```sh
+dsh --profile web --dump-config
+```
+
+The output contains `id: llm-newapi`. Start the Web profile with `dsh --profile web`, then open **Settings → Models**, add a **NewAPI** provider, enter its base URL and API key, select a model, and save. The key is stored by DSH's credentials service; the profile settings retain only its reference.
+
+To install into another profile, replace both occurrences of `web` with that profile's name. Pin the Git reference to a commit as shown above; do not use a moving branch name for a production profile.
 
 ## Config
 
