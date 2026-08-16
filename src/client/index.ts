@@ -95,7 +95,7 @@ interface DraftProvider {
   apiKeyEnv?: string
   /** Wire protocol for models the gateway does not disclose a dialect for. */
   api?: string
-  models?: Array<{ id: string; name?: string }>
+  models?: Array<{ id: string; name?: string; reasoningEfforts?: Record<string, string> }>
   /** Per-model wire-protocol routing overrides, preserved from the model fetch. */
   modelApiOverrides?: Record<string, string>
   reasoning?: Record<string, string>
@@ -126,6 +126,15 @@ const PROTOCOL_NAMES: Record<string, string> = {
 
 /** The selectable reasoning levels (mirrors the Host catalog's THINKING_LEVELS). */
 const REASONING_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
+
+/** The five reasoning-depth levels written onto every selected model, wire value = level name. */
+const FIVE_REASONING_EFFORTS: Record<string, string> = {
+  low: 'low',
+  medium: 'medium',
+  high: 'high',
+  xhigh: 'xhigh',
+  max: 'max',
+}
 
 /** Multiple logs aside, most failures reduce to a message the panel shows. */
 function messageOf(error: unknown): string {
@@ -330,7 +339,12 @@ function NewApiSection(props: { controller: PanelController; t: (key: keyof Dict
     const modelsWire = [...selectedModels]
       .map(id => {
         const found = models.find(m => m.id === id)
-        return found === undefined ? { id } : { id: found.id, ...found.name === undefined ? {} : { name: found.name } }
+        const base = found === undefined
+          ? { id }
+          : { id: found.id, ...found.name === undefined ? {} : { name: found.name } }
+        // Every selected model carries the five reasoning-depth levels, so the
+        // saved route serves them all without re-interrogating the gateway.
+        return { ...base, reasoningEfforts: { ...FIVE_REASONING_EFFORTS } }
       })
     // Each fetched model that disclosed a wire protocol is preserved as a
     // per-model routing override, so the saved route stays serviceable without
