@@ -8,7 +8,7 @@
  * @module dsh-llm-newapi/web
  */
 import type { Context } from '@deepseek-ai/cordis';
-import type { NewApiDiscoveredModel } from './catalog.ts';
+import { type NewApiDiscoveredModel } from './catalog.ts';
 /** Exact namespace the settings panel edits. */
 export declare const NS = "llm-newapi";
 /** The branded namespace the settings seam addresses. */

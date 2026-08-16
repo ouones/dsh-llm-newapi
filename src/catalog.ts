@@ -187,6 +187,27 @@ function invalid(provider: string, detail: string): never {
 }
 
 /**
+ * The protocol one discovered endpoint type maps to, or nothing. Only the two
+ * dialects a New API gateway advertises are routable; a listing that names
+ * neither leaves the model unroutable on its own.
+ */
+export function protocolOfEndpoint(endpoint: string): NewApiProtocol | undefined {
+  if (endpoint === 'openai') return 'openai-completions'
+  if (endpoint === 'anthropic') return 'anthropic-messages'
+  return undefined
+}
+
+/**
+ * The wire protocol a discovered gateway advertising these endpoint types is
+ * inferred to speak, or nothing if none is routable.
+ */
+export function discoverModelApi(endpoints: readonly string[] | undefined): NewApiProtocol | undefined {
+  if (endpoints === undefined) return undefined
+  const routed = endpoints.map(protocolOfEndpoint).filter((api): api is NewApiProtocol => api !== undefined)
+  return routed[0]
+}
+
+/**
  * Route one model id onto a wire protocol: a regex `modelApiOverrides` match
  * wins, then a configured route `api`, then the discovered
  * `supported_endpoint_types` (openai → completions, anthropic → messages).
@@ -213,10 +234,7 @@ export function routeModelApi(
     if (regex.test(id)) return api
   }
   if (request.api !== undefined) return request.api
-  if (discoveredEndpoints === undefined) return undefined
-  if (discoveredEndpoints.includes('openai')) return 'openai-completions'
-  if (discoveredEndpoints.includes('anthropic')) return 'anthropic-messages'
-  return undefined
+  return discoverModelApi(discoveredEndpoints)
 }
 
 /**

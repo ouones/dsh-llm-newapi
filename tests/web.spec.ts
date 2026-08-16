@@ -171,6 +171,27 @@ describe('models route', () => {
     expect(seen).toEqual({ baseURL: 'https://gateway.example', apiKey: 'stored-key', provider: 'g' })
   })
 
+  it('derives a per-model api from the gateway\'s supported endpoint types', async () => {
+    const discovered: NewApiDiscoveredModel[] = [
+      { id: 'deepseek-chat', name: 'DeepSeek Chat', endpoints: ['openai'] },
+      { id: 'claude-sonnet', name: 'Claude Sonnet', endpoints: ['anthropic'] },
+      // A listing that advertises no endpoint type carries no api: the panel
+      // keeps such a model selectable but cannot route it on its own.
+      { id: 'unspecified', name: 'Unspecified' },
+    ]
+    const deps: LlmNewapiWebDeps = { discover: async () => discovered }
+    const regs = register(happySettings(), deps)
+    const handler = regs.find(r => r.path === MODELS_ROUTE)!.handler
+    const res = captureRes()
+    await handler(jsonReq({ baseURL: 'https://gateway.example', provider: 'g' }), res)
+    expect(res.status).toBe(200)
+    expect(JSON.parse(res.body).models).toEqual([
+      { id: 'deepseek-chat', name: 'DeepSeek Chat', api: 'openai-completions' },
+      { id: 'claude-sonnet', name: 'Claude Sonnet', api: 'anthropic-messages' },
+      { id: 'unspecified', name: 'Unspecified' },
+    ])
+  })
+
   it('requires a base URL', async () => {
     const regs = register(happySettings(), { discover: async () => [] })
     const handler = regs.find(r => r.path === MODELS_ROUTE)!.handler

@@ -41,6 +41,8 @@ const enDict = {
   modelsHint: 'Every candidate defaults to selected; enable the checkbox set you want this route to serve.',
   reasoning: 'Default reasoning level',
   reasoningHint: 'low / medium / high / xhigh / max. Used when a request names no effort; medium is the default.',
+  api: 'Wire protocol',
+  apiHint: 'How this gateway speaks to models. OpenAI-compatible Chat Completions is the common New API dialect; most gateways route everything over it.',
   noneFetched: 'Enter a base URL, then fetch models.',
   emptyModels: 'This gateway advertised no models.',
   removedOldRoute: 'Route key changed; the old route remains unless you remove it in settings.yaml.',
@@ -66,6 +68,8 @@ const zhDict = {
   modelsHint: '每个候选模型默认全选；勾选你想该路由提供的模型集合。',
   reasoning: '默认思考深度',
   reasoningHint: 'low / medium / high / xhigh / max。请求未指定时使用；默认 medium。',
+  api: '线路协议',
+  apiHint: '该网关与模型对话的方式。OpenAI 兼容的 Chat Completions 是 New API 最常见的线路；多数网关都用它中继所有模型。',
   noneFetched: '先填写 Base URL，再获取模型。',
   emptyModels: '该网关没有返回任何模型。',
   removedOldRoute: '路由键已变更；旧路由仍保留，除非你在 settings.yaml 中删除它。',
@@ -82,13 +86,18 @@ function dictionary(lang: Lang): Dict {
 interface AdvertisedModel {
   id: string
   name?: string
+  api?: 'openai-completions' | 'openai-responses' | 'anthropic-messages'
 }
 
 /** A provider profile as the settings document stores it (subset we edit). */
 interface DraftProvider {
   baseURL: string
   apiKeyEnv?: string
+  /** Wire protocol for models the gateway does not disclose a dialect for. */
+  api?: string
   models?: Array<{ id: string; name?: string }>
+  /** Per-model wire-protocol routing overrides, preserved from the model fetch. */
+  modelApiOverrides?: Record<string, string>
   reasoning?: Record<string, string>
 }
 
@@ -106,6 +115,14 @@ interface SettingsSnapshot {
 
 /** A path mutation against the settings document. */
 type PathOp = { op: 'set'; path: string[]; value: unknown } | { op: 'unset'; path: string[] }
+
+/** The selectable wire protocols (mirrors the Host catalog's SUPPORTED_PROTOCOLS). */
+const PROTOCOLS = ['openai-completions', 'openai-responses', 'anthropic-messages'] as const
+const PROTOCOL_NAMES: Record<string, string> = {
+  'openai-completions': 'OpenAI Chat Completions',
+  'openai-responses': 'OpenAI Responses',
+  'anthropic-messages': 'Anthropic Messages',
+}
 
 /** The selectable reasoning levels (mirrors the Host catalog's THINKING_LEVELS). */
 const REASONING_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
@@ -218,6 +235,7 @@ function NewApiSection(props: { controller: PanelController; t: (key: keyof Dict
   const [models, setModels] = React.useState<AdvertisedModel[]>([])
   const [selectedModels, setSelectedModels] = React.useState<Set<string>>(new Set())
   const [reasoning, setReasoning] = React.useState<string>('medium')
+  const [api, setApi] = React.useState<string>('openai-completions')
   const [slug, setSlug] = React.useState<string>('my-gateway')
   const [fetching, setFetching] = React.useState(false)
 
@@ -238,6 +256,7 @@ function NewApiSection(props: { controller: PanelController; t: (key: keyof Dict
             baseURL: profile.baseURL ?? '',
             apiKeyEnv: profile.apiKeyEnv,
           })
+          setApi(typeof profile.api === 'string' ? profile.api : 'openai-completions')
           const stored = new Set((profile.models ?? []).map(m => m.id))
           setSelectedModels(stored)
           const why = Object.keys(profile.reasoning ?? {})
@@ -313,10 +332,20 @@ function NewApiSection(props: { controller: PanelController; t: (key: keyof Dict
         const found = models.find(m => m.id === id)
         return found === undefined ? { id } : { id: found.id, ...found.name === undefined ? {} : { name: found.name } }
       })
+    // Each fetched model that disclosed a wire protocol is preserved as a
+    // per-model routing override, so the saved route stays serviceable without
+    // re-interrogating the gateway (resolveModels needs a route `api` or a
+    // `modelApiOverrides` entry to route every model it serves).
+    const apiOverrides: Record<string, string> = {}
+    for (const m of models) {
+      if (selectedModels.has(m.id) && m.api !== undefined) apiOverrides[m.id] = m.api
+    }
     const profile: DraftProvider = {
       baseURL: draft.baseURL,
       ...draft.apiKeyEnv === undefined || draft.apiKeyEnv.length === 0 ? {} : { apiKeyEnv: draft.apiKeyEnv },
+      api: api,
       models: modelsWire,
+      ...Object.keys(apiOverrides).length === 0 ? {} : { modelApiOverrides: apiOverrides },
       reasoning: { [reasoning]: reasoning },
     }
     const ops: PathOp[] = [{ op: 'set', path: ['providers', slug], value: profile }]
@@ -377,6 +406,19 @@ function NewApiSection(props: { controller: PanelController; t: (key: keyof Dict
       React.createElement('div', { style: hintStyle }, t('apiKeyEnvHint')),
     ),
 
+    React.createElement('div', { style: rowStyle },
+      React.createElement('label', { style: labelStyle }, t('api')),
+      React.createElement('select', {
+        style: inputStyle,
+        value: api,
+        onChange: (e: React.ChangeEvent<HTMLSelectElement>) => setApi(e.target.value),
+      },
+      PROTOCOLS.map(protocol => React.createElement('option', {
+        key: protocol,
+        value: protocol,
+      }, PROTOCOL_NAMES[protocol] ?? protocol))),
+      React.createElement('div', { style: hintStyle }, t('apiHint')),
+    ),
     React.createElement('div', { style: rowStyle },
       React.createElement('label', { style: labelStyle }, t('reasoning')),
       React.createElement('select', {

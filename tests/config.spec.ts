@@ -171,6 +171,33 @@ describe('resolveProfiles: full profile resolution', () => {
     expect([...resolved.get('acme')!.modelApiOverrides]).toEqual([['^m', 'openai-responses']])
   })
 
+  it('resolves the exact shape the web panel saves: models plus per-model modelApiOverrides', () => {
+    // This is the regression for the reported save failure: the panel fetches
+    // the gateway's supported_endpoint_types, keeps it per model as the api,
+    // and writes it as modelApiOverrides. Without it the route has neither a
+    // route api nor any override, so resolveModels refuses every model.
+    const profile = resolveOne({
+      modelApiOverrides: { 'deepseek-chat': 'openai-completions', 'claude-sonnet': 'anthropic-messages' },
+      models: [
+        { id: 'deepseek-chat' },
+        { id: 'claude-sonnet' },
+        { id: 'unspecified' },
+      ],
+    })
+
+    expect([...profile.modelApiOverrides]).toEqual([
+      ['deepseek-chat', 'openai-completions'],
+      ['claude-sonnet', 'anthropic-messages'],
+    ])
+    // ModelApiOverrides wins over the route api per model.
+    expect(profile.models.map(m => [m.id, m.api])).toEqual([
+      ['deepseek-chat', 'openai-completions'],
+      ['claude-sonnet', 'anthropic-messages'],
+      // A model with no matching override falls back to the route api.
+      ['unspecified', 'openai-completions'],
+    ])
+  })
+
   it('defaults a bare provider profile through the runtime schema to a resolvable shape', () => {
     // The Config schema fills displayName-adjacent defaults; resolution then
     // serves the schema's materialized values.

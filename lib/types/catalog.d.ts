@@ -153,6 +153,17 @@ export interface NewApiDiscoveredModel {
     reasoning?: boolean;
 }
 /**
+ * The protocol one discovered endpoint type maps to, or nothing. Only the two
+ * dialects a New API gateway advertises are routable; a listing that names
+ * neither leaves the model unroutable on its own.
+ */
+export declare function protocolOfEndpoint(endpoint: string): NewApiProtocol | undefined;
+/**
+ * The wire protocol a discovered gateway advertising these endpoint types is
+ * inferred to speak, or nothing if none is routable.
+ */
+export declare function discoverModelApi(endpoints: readonly string[] | undefined): NewApiProtocol | undefined;
+/**
  * Route one model id onto a wire protocol: a regex `modelApiOverrides` match
  * wins, then a configured route `api`, then the discovered
  * `supported_endpoint_types` (openai → completions, anthropic → messages).

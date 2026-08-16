@@ -13,7 +13,7 @@ import type { IncomingMessage } from 'node:http'
 import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import type { SettingsPathOp } from '@deepseek-ai/dsh-settings'
 import { LlmError, normalizeApiKey } from '@deepseek-ai/dsh-llm'
-import type { NewApiDiscoveredModel } from './catalog.ts'
+import { discoverModelApi, type NewApiDiscoveredModel } from './catalog.ts'
 
 /** Exact namespace the settings panel edits. */
 export const NS = 'llm-newapi'
@@ -208,7 +208,13 @@ async function handleModels(req: IncomingMessage, res: Res, ctx: Context, deps: 
       apiKey = await deps.storedApiKey?.(provider)
     }
     const models = await deps.discover(baseURL, apiKey, provider)
-    responseJson(res, 200, { models: models.map(model => ({ id: model.id, ...model.name === undefined ? {} : { name: model.name } })) })
+    responseJson(res, 200, { models: models.map(model => ({
+      id: model.id,
+      ...model.name === undefined ? {} : { name: model.name },
+      // Carry the gateway's endpoint-derived wire protocol so the panel can
+      // persist it per model. A model the gateway did not route carries none.
+      ...discoverModelApi(model.endpoints) === undefined ? {} : { api: discoverModelApi(model.endpoints) },
+    })) })
   } catch (error) {
     ctx.logger.warn('llm-newapi models interrogation failed: %s', publicMessage(error))
     requestError(res, 400, 'models-failed', publicMessage(error))
