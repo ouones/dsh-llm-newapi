@@ -47,16 +47,21 @@ export interface NewApiAdapterOptions {
   resolveAttachments?: () => AttachmentStore | undefined
 }
 
+/** Prefer `medium` when a route declares it, otherwise the first declared level. */
+function preferMedium(keys: readonly string[]): string | undefined {
+  if (keys.length === 0) return undefined
+  return keys.includes('medium') ? 'medium' : keys[0]
+}
+
 /** The route-level reasoning default this model can actually take, for describing it. */
 function describableReasoningLevel(
   model: NewApiModel,
   effort: NewApiReasoningEfforts | undefined,
 ): string | undefined {
   if (effort === undefined || !model.reasoning) return undefined
-  const offered = Object.keys(effort)
-  return offered.length > 0 ? offered[0] : undefined
+  // The out-of-the-box default is "medium"; honor it whenever the route offers it.
+  return preferMedium(Object.keys(effort))
 }
-
 /** The compat block as the serializers read it (every forced field decided). */
 function wireModelOf(model: NewApiModel): WireModel {
   return {
@@ -68,21 +73,28 @@ function wireModelOf(model: NewApiModel): WireModel {
 }
 
 /** Resolve the harness effort against the model's offered levels and wire spellings. */
-function resolveReasoningEffort(
+export function resolveReasoningEffort(
   model: NewApiModel,
   profile: ResolvedNewApiProviderProfile,
   requested: string | undefined,
 ): { wire: string | undefined; offered: boolean } {
   const map = model.thinkingLevelMap
   if (map === undefined || !model.reasoning) return { wire: undefined, offered: false }
-  const level = requested ?? Object.keys(profile.reasoning ?? {})[0]
-  if (level === undefined) return { wire: undefined, offered: false }
-  const wire = map[level]
+  if (requested === undefined) {
+    const level = preferMedium(Object.keys(profile.reasoning ?? {}))
+    if (level === undefined) return { wire: undefined, offered: false }
+    const fallback = map[level]
+    return fallback === null || fallback === undefined
+      ? { wire: undefined, offered: false }
+      : { wire: fallback, offered: true }
+  }
+  const wire = map[requested]
   if (wire === null || wire === undefined) {
-    // `off` is "supported, send nothing".
-    if (level === 'off') return { wire: undefined, offered: true }
+    // `off` is "supported, send nothing" — an authoritative upstream option we
+    // pass through instead of promoting to a fixed enum (see LLM-adapter docs).
+    if (requested === 'off') return { wire: undefined, offered: true }
     throw new LlmError(
-      `New API provider "${model.provider}" model "${model.id}" does not support reasoning effort "${level}"`,
+      `New API provider "${model.provider}" model "${model.id}" does not support reasoning effort "${requested}"`,
       'UNSUPPORTED_REASONING_EFFORT',
     )
   }
@@ -100,13 +112,20 @@ function reasoningInfo(
     return wire !== null && wire !== undefined
   })
   if (levels.length === 0) return {}
+  // A route-level default must be one the model actually offers; if it names a
+  // level the model lacks, fall back to the first offered one rather than point
+  // `defaultEffort` at a level absent from `efforts`. When no default is
+  // declared, leave it absent so the provider's own default is preserved.
+  const defaultEffort = defaultLevel === undefined
+    ? undefined
+    : levels.includes(defaultLevel) ? defaultLevel : levels[0]
   return {
     reasoning: {
       efforts: levels.map(level => ({
         id: ReasoningEffortId(level),
         name: `${level.charAt(0).toUpperCase()}${level.slice(1)}`,
       })),
-      ...defaultLevel === undefined ? {} : { defaultEffort: ReasoningEffortId(defaultLevel) },
+      ...defaultEffort === undefined ? {} : { defaultEffort: ReasoningEffortId(defaultEffort) },
     },
   }
 }
@@ -233,11 +252,6 @@ export class NewApiAdapter extends LlmAdapter {
       if (containsImage && attachments === undefined) {
         throw new LlmError('newapi image input requires the durable attachment service', 'UNSUPPORTED_CONTENT')
       }
-      // Image support is declared per model; this adapter's wire routes are
-      // text-only, so image-capable models still cannot be served.
-      if (containsImage) {
-        throw new LlmError('newapi wire routes are text-only', 'UNSUPPORTED_CONTENT')
-      }
 
       const url = model.api === 'anthropic-messages'
         ? `${model.baseUrl.replace(/\/+$/, '')}/v1/messages`
@@ -252,8 +266,8 @@ export class NewApiAdapter extends LlmAdapter {
         headers['anthropic-version'] = '2023-06-01'
       }
       const body = model.api === 'anthropic-messages'
-        ? serializeAnthropicRequest(options, wireModelOf(model), reasoning.wire)
-        : serializeChatRequest(options, wireModelOf(model), reasoning.wire)
+        ? await serializeAnthropicRequest(options, wireModelOf(model), reasoning.wire, attachments)
+        : await serializeChatRequest(options, wireModelOf(model), reasoning.wire, attachments)
 
       let response: Response
       try {

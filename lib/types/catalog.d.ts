@@ -21,7 +21,7 @@ export type NewApiModality = 'text' | 'image';
 /** Every request modality a profile may declare. */
 export declare const MODALITIES: readonly ["text", "image"];
 /** Reasoning levels a route or model may offer, in escalation order. */
-export declare const THINKING_LEVELS: readonly ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
+export declare const THINKING_LEVELS: readonly ["low", "medium", "high", "xhigh", "max"];
 export type NewApiThinkingLevel = typeof THINKING_LEVELS[number];
 /** The `compat.thinkingFormat` spellings the OpenAI completions wire accepts. */
 export type NewApiThinkingFormat = 'openai' | 'deepseek' | 'qwen' | 'zai' | 'openrouter' | 'together' | 'ant-ling' | 'string-thinking';
@@ -33,11 +33,12 @@ export type NewApiProtocol = typeof SUPPORTED_PROTOCOLS[number];
 /**
  * Selectable reasoning efforts for one model: each key is a level the model
  * offers (and selectors show), and its value is the wire spelling dispatch
- * sends for it. `off` alone may leave its value empty — "supported, send
- * nothing" — because for most providers not thinking is the parameter's
- * absence; every other declared level must name a wire value.
+ * sends for it. The five core levels are typed; extra keys (e.g. the upstream
+ * capability's `off`) pass through by convention rather than being promoted to
+ * a fixed enum (see the LLM-adapter guidance). A valueless `off` means
+ * "supported, send nothing"; every other declared level must name a wire value.
  */
-export type NewApiReasoningEfforts = Partial<Record<NewApiThinkingLevel, string | null>>;
+export type NewApiReasoningEfforts = Partial<Record<NewApiThinkingLevel, string | null>> & Record<string, string | null>;
 /**
  * Reasoning-dispatch compatibility switches for one model. Unlike pi-ai's
  * catalog, this is the COMPLETE compat surface — the plugin decides every
@@ -183,4 +184,3 @@ export interface RouteCatalog {
 export declare function resolveModels(request: RouteCatalogRequest, discoveredModels?: readonly NewApiDiscoveredModel[]): RouteCatalog;
 /** Build the advisory {@link LlmModelInfo} for one materialized model. */
 export declare function modelInfo(provider: string, model: NewApiModel): LlmModelInfo;
-//# sourceMappingURL=catalog.d.ts.map

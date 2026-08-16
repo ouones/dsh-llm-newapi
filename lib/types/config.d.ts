@@ -143,4 +143,3 @@ export declare function assertServiceable(config: Config): void;
  * @returns validated profiles in configuration order.
  */
 export declare function resolveProfiles(providers: Readonly<Record<string, NewApiProviderProfile>> | undefined): Map<string, ResolvedNewApiProviderProfile>;
-//# sourceMappingURL=config.d.ts.map

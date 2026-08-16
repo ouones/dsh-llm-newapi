@@ -25,8 +25,13 @@ export type NewApiModality = 'text' | 'image'
 export const MODALITIES = ['text', 'image'] as const
 
 /** Reasoning levels a route or model may offer, in escalation order. */
-export const THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
+export const THINKING_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
 export type NewApiThinkingLevel = typeof THINKING_LEVELS[number]
+
+/** The out-of-the-box effort map: all five levels, each wiring its own name. */
+function defaultThinkingLevels(): Record<NewApiThinkingLevel, string> {
+  return Object.fromEntries(THINKING_LEVELS.map(level => [level, level])) as Record<NewApiThinkingLevel, string>
+}
 
 /** The `compat.thinkingFormat` spellings the OpenAI completions wire accepts. */
 export type NewApiThinkingFormat = 'openai' | 'deepseek' | 'qwen' | 'zai' | 'openrouter' | 'together' | 'ant-ling' | 'string-thinking'
@@ -50,11 +55,12 @@ export type NewApiProtocol = typeof SUPPORTED_PROTOCOLS[number]
 /**
  * Selectable reasoning efforts for one model: each key is a level the model
  * offers (and selectors show), and its value is the wire spelling dispatch
- * sends for it. `off` alone may leave its value empty — "supported, send
- * nothing" — because for most providers not thinking is the parameter's
- * absence; every other declared level must name a wire value.
+ * sends for it. The five core levels are typed; extra keys (e.g. the upstream
+ * capability's `off`) pass through by convention rather than being promoted to
+ * a fixed enum (see the LLM-adapter guidance). A valueless `off` means
+ * "supported, send nothing"; every other declared level must name a wire value.
  */
-export type NewApiReasoningEfforts = Partial<Record<NewApiThinkingLevel, string | null>>
+export type NewApiReasoningEfforts = Partial<Record<NewApiThinkingLevel, string | null>> & Record<string, string | null>
 
 /**
  * Reasoning-dispatch compatibility switches for one model. Unlike pi-ai's
@@ -230,39 +236,38 @@ function resolveModelReasoning(
 ): Pick<NewApiModel, 'reasoning' | 'thinkingLevelMap'> {
   const efforts = entry.reasoningEfforts
   if (efforts === undefined) {
-    return { reasoning: discovered?.reasoning ?? false }
+    // A reasoning-capable model with no per-level declaration offers all five
+    // levels, each sending its own name as the wire value ("medium" → medium).
+    return discovered?.reasoning === true
+      ? { reasoning: true, thinkingLevelMap: defaultThinkingLevels() }
+      : { reasoning: discovered?.reasoning ?? false }
   }
   if (efforts === false) return { reasoning: false }
   if ((efforts as unknown) === null || Object.keys(efforts).length === 0) {
     invalid(provider, `model "${entry.id}" has an empty reasoningEfforts; declare the offered levels, set`
       + ' false for a non-reasoning model, or omit the field to keep the discovered capability')
   }
-  const declared = THINKING_LEVELS.flatMap((level) => {
-    const wire = efforts[level]
-    return wire === undefined ? [] : [[level, wire] as const]
-  })
-  for (const [level, wire] of declared) {
+  const entries = Object.entries(efforts) as Array<[string, string | null]>
+  const core = new Set<string>(THINKING_LEVELS)
+  // A declared level must name a wire value — except `off`, which alone is
+  // "supported, send nothing" (valueless). Undeclared core levels are pinned
+  // unsupported below; non-core keys (e.g. the upstream's `off`) pass through.
+  for (const [level, wire] of entries) {
     if (wire === null) {
       if (level !== 'off') {
         invalid(provider, `model "${entry.id}" reasoningEfforts.${level} needs the wire value dispatch`
-          + ' should send; only "off" may leave it empty')
+          + ' should send; the level is declared offered')
       }
     } else if (wire.length === 0) {
       invalid(provider, `model "${entry.id}" reasoningEfforts.${level} must not be an empty string`)
     }
   }
-  if (!declared.some(([level]) => level !== 'off')) {
-    invalid(provider, `model "${entry.id}" reasoningEfforts offers no level beyond "off"; declare a thinking`
-      + ' level, or set reasoningEfforts to false for a non-reasoning model')
-  }
   const map: Record<string, string | null> = {}
   for (const level of THINKING_LEVELS) {
-    const wire = efforts[level]
-    if (wire === undefined) {
-      map[level] = null
-    } else if (wire !== null) {
-      map[level] = wire
-    }
+    map[level] = efforts[level] ?? null
+  }
+  for (const [level, wire] of entries) {
+    if (!core.has(level)) map[level] = wire
   }
   return { reasoning: true, thinkingLevelMap: map }
 }

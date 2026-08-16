@@ -19,8 +19,11 @@
  *         # Optional: force a protocol for models the gateway does not advertise.
  *         api: openai-completions
  *         reasoningEfforts:
- *           off:
+ *           low: low
+ *           medium: medium
  *           high: high
+ *           xhigh: xhigh
+ *           max: max
  *         compat:
  *           # Forced defaults: supportsDeveloperRole: false, supportsStore: false,
  *           # maxTokensField: max_tokens. Override only when the upstream accepts more.
@@ -38,6 +41,7 @@ import { NewApiAdapter } from './adapter.ts'
 import { assertServiceable, Config, resolveProfiles } from './config.ts'
 import type { ResolvedNewApiProviderProfile } from './config.ts'
 import { discoverModels } from './discovery.ts'
+import { installLlmNewapiWeb } from './web.ts'
 
 export { NewApiAdapter } from './adapter.ts'
 export type { NewApiAdapterOptions } from './adapter.ts'
@@ -224,5 +228,16 @@ export function apply(ctx: Context, config: Config): void {
         ctx.logger.error(error)
       }
     },
+  })
+
+  // Web-profile Settings panel routes: model candidates come straight from the
+  // gateway's /v1/models listing, and the browser edits the same settings seam.
+  installLlmNewapiWeb(ctx, {
+    storedApiKey,
+    discover: (baseURL, apiKey, provider) => discoverModels({
+      baseURL,
+      ...apiKey === undefined ? {} : { apiKey },
+      ...provider === undefined ? {} : { provider },
+    }),
   })
 }

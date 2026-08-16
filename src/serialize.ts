@@ -3,23 +3,27 @@
  * openai-completions and anthropic-messages routes. User text is joined;
  * assistant text becomes `content` and tool calls become `tool_calls` /
  * `tool_use` blocks; tool results become separate tool messages / `tool_result`
- * blocks. Core image blocks are rejected explicitly because both wire routes
- * are text-only; unknown declaration-merged block types retain the adapter's
+ * blocks. Image blocks read their bytes through the optional durable
+ * attachment service and become OpenAI `image_url` parts or Anthropic `image`
+ * blocks; unknown declaration-merged block types retain the adapter's
  * documented extension fallback.
  *
  * @module dsh-llm-newapi/serialize
  */
 
 import { contentHasImage, LlmError } from '@deepseek-ai/dsh-llm'
-import type { ContentBlock, GenerateOptions, Message } from '@deepseek-ai/dsh-llm'
+import type { ContentBlock, GenerateOptions, ImageBlock, Message } from '@deepseek-ai/dsh-llm'
+import type { AttachmentStore } from '@deepseek-ai/dsh-attachment'
 import type { NewApiCompatProfile } from './catalog.ts'
 import type {
   AnthropicContentBlock,
   AnthropicMessage,
   AnthropicRequest,
   AnthropicTool,
+  WireImagePart,
   WireMessage,
   WireRequest,
+  WireTextPart,
   WireTool,
 } from './types.ts'
 
@@ -43,10 +47,25 @@ function flattenText(blocks: ContentBlock[]): string {
     .join('')
 }
 
-/** Reject core image content before any text-flattening path can silently erase it. */
-function assertTextOnly(blocks: readonly ContentBlock[]): void {
-  if (contentHasImage(blocks)) {
-    throw new LlmError('The New API adapter does not support image content.', 'UNSUPPORTED_CONTENT')
+/** Read one image block's bytes and encode them as a data URI for the OpenAI wire. */
+async function openAiImagePart(
+  block: ImageBlock,
+  attachments: AttachmentStore,
+): Promise<WireImagePart> {
+  const stored = await attachments.readImage(block.attachment)
+  const base64 = Buffer.from(stored.data).toString('base64')
+  return { type: 'image_url', image_url: { url: `data:${stored.ref.mediaType};base64,${base64}` } }
+}
+
+/** Read one image block's bytes and build the Anthropic `image` source block. */
+async function anthropicImageBlock(
+  block: ImageBlock,
+  attachments: AttachmentStore,
+): Promise<AnthropicContentBlock & { type: 'image' }> {
+  const stored = await attachments.readImage(block.attachment)
+  return {
+    type: 'image',
+    source: { type: 'base64', media_type: stored.ref.mediaType, data: Buffer.from(stored.data).toString('base64') },
   }
 }
 
@@ -113,14 +132,24 @@ function parseArguments(raw: string): Record<string, unknown> {
  * standalone OpenAI `{role: 'tool'}` messages or Anthropic `tool_result`
  * blocks; the harness puts each tool result in its own user-role message, so a
  * mixed user message contributes its text first and its tool results after.
+ * Image blocks in user or tool-result content are read through the attachment
+ * store and emitted as vision parts / image blocks when one was supplied;
+ * without the store an image is refused loudly rather than silently dropped.
  * @param messages - the harness conversation, in order.
  * @param anthropic - whether to emit Anthropic blocks (tool_result) instead of OpenAI tool messages.
+ * @param attachments - the durable attachment store, required when any message carries an image.
  * @returns the wire messages; order preserved, each tool result expanded into its own entry.
  */
-function serializeMessages(messages: Message[], anthropic: boolean): (WireMessage | AnthropicMessage)[] {
+async function serializeMessages(
+  messages: Message[],
+  anthropic: boolean,
+  attachments?: AttachmentStore,
+): Promise<(WireMessage | AnthropicMessage)[]> {
   const wire: (WireMessage | AnthropicMessage)[] = []
   for (const message of messages) {
-    assertTextOnly(message.content)
+    if (contentHasImage(message.content) && attachments === undefined) {
+      throw new LlmError('newapi image input requires the durable attachment service', 'UNSUPPORTED_CONTENT')
+    }
     if (message.role === 'system') {
       if (anthropic) {
         // System-role history messages have no Anthropic home; they are
@@ -140,31 +169,97 @@ function serializeMessages(messages: Message[], anthropic: boolean): (WireMessag
     if (anthropic) {
       const blocks: AnthropicContentBlock[] = []
       if (text.length > 0) blocks.push({ type: 'text', text })
+      for (const part of await anthropicUserParts(message.content, attachments)) {
+        blocks.push(part)
+      }
       for (const result of toolResults) {
-        const resultText = flattenText(result.content) || '(no output)'
+        const resultContent: AnthropicContentBlock[] = []
+        const resultText = flattenText(result.content)
+        if (resultText.length > 0) resultContent.push({ type: 'text', text: resultText })
+        for (const part of await anthropicUserParts(result.content, attachments)) {
+          resultContent.push(part)
+        }
+        if (resultContent.length === 0) resultContent.push({ type: 'text', text: '(no output)' })
         blocks.push({
           type: 'tool_result',
           tool_use_id: result.toolCallId,
-          content: [{ type: 'text', text: resultText }],
+          content: resultContent,
           ...result.isError === true ? { is_error: true } : {},
         })
       }
       if (blocks.length > 0) wire.push({ role: 'user', content: blocks })
       continue
     }
-    if (text.length > 0 || toolResults.length === 0) {
-      wire.push({ role: 'user', content: text })
+    const imageParts = await openAiUserParts(message.content, attachments)
+    if (imageParts !== undefined || text.length > 0 || toolResults.length === 0) {
+      wire.push({ role: 'user', content: openAiUserContent(text, imageParts) })
     }
     for (const result of toolResults) {
+      const resultImages = await openAiUserParts(result.content, attachments)
       wire.push({
         role: 'tool',
         tool_call_id: result.toolCallId,
         // Empty tool output still needs SOME content on the wire.
-        content: flattenText(result.content) || '(no output)',
+        content: openAiToolContent(flattenText(result.content), resultImages),
       })
     }
   }
   return wire
+}
+
+/** The image blocks a message carries, or `undefined` when it carries none. */
+function imageBlocksOf(blocks: readonly ContentBlock[]): ImageBlock[] {
+  if (!contentHasImage(blocks)) return []
+  return blocks.filter((block): block is ImageBlock => block.type === 'image')
+}
+
+/** Build the OpenAI image_url parts for one message. */
+async function openAiUserParts(
+  blocks: readonly ContentBlock[],
+  attachments?: AttachmentStore,
+): Promise<WireImagePart[] | undefined> {
+  const images = imageBlocksOf(blocks)
+  if (images.length === 0) return undefined
+  if (attachments === undefined) {
+    throw new LlmError('newapi image input requires the durable attachment service', 'UNSUPPORTED_CONTENT')
+  }
+  const parts: WireImagePart[] = []
+  for (const block of images) parts.push(await openAiImagePart(block, attachments))
+  return parts
+}
+
+/** The OpenAI user content value: a plain string when text-only, else a parts array. */
+function openAiUserContent(text: string, imageParts: WireImagePart[] | undefined): string | (WireTextPart | WireImagePart)[] {
+  if (imageParts === undefined) return text
+  return [...text.length > 0 ? [{ type: 'text' as const, text }] : [], ...imageParts]
+}
+
+/**
+ * The OpenAI tool-role content: always a plain string, because `image_url`
+ * parts are not a tool-message wire shape. An image in a tool result is
+ * therefore DEGRADED to a fixed text marker (`image attached`) — the model never
+ * receives those pixels on the OpenAI tool wire. Any callers relying on
+ * image-understanding in tool results should prefer the Anthropic route, which
+ * carries tool-result images as real `image` blocks.
+ */
+function openAiToolContent(text: string, imageParts: WireImagePart[] | undefined): string {
+  if (imageParts === undefined) return text || '(no output)'
+  return [text.length > 0 ? text : '(no output)', ...imageParts.map(() => 'image attached')].join('\n')
+}
+
+/** The Anthropic user content blocks for one message's image blocks. */
+async function anthropicUserParts(
+  blocks: readonly ContentBlock[],
+  attachments?: AttachmentStore,
+): Promise<AnthropicContentBlock[]> {
+  const images = imageBlocksOf(blocks)
+  if (images.length === 0) return []
+  if (attachments === undefined) {
+    throw new LlmError('newapi image input requires the durable attachment service', 'UNSUPPORTED_CONTENT')
+  }
+  const parts: AnthropicContentBlock[] = []
+  for (const block of images) parts.push(await anthropicImageBlock(block, attachments))
+  return parts
 }
 
 /**
@@ -176,13 +271,15 @@ function serializeMessages(messages: Message[], anthropic: boolean): (WireMessag
  * @param options - the harness request (model, history, system, tools, sampling).
  * @param model - the resolved wire facts for this model.
  * @param reasoningEffort - the wire spelling of the selected reasoning level, when dispatch resolved one.
+ * @param attachments - the durable attachment store, required when any message carries an image.
  * @returns the chat-completions request body.
  */
-export function serializeChatRequest(
+export async function serializeChatRequest(
   options: GenerateOptions,
   model: WireModel,
   reasoningEffort?: string,
-): WireRequest {
+  attachments?: AttachmentStore,
+): Promise<WireRequest> {
   const messages: WireMessage[] = []
   if (options.system !== undefined) {
     messages.push({
@@ -190,7 +287,7 @@ export function serializeChatRequest(
       content: options.system,
     })
   }
-  messages.push(...serializeMessages(options.messages, false) as WireMessage[])
+  messages.push(...await serializeMessages(options.messages, false, attachments) as WireMessage[])
 
   const tools: WireTool[] | undefined = options.tools?.map(tool => ({
     type: 'function',
@@ -224,14 +321,16 @@ export function serializeChatRequest(
  * @param options - the harness request (model, history, system, tools, sampling).
  * @param model - the resolved wire facts for this model.
  * @param _reasoningEffort - unused by the Anthropic wire; accepted for a uniform adapter dispatch signature.
+ * @param attachments - the durable attachment store, required when any message carries an image.
  * @returns the messages request body.
  */
-export function serializeAnthropicRequest(
+export async function serializeAnthropicRequest(
   options: GenerateOptions,
   model: WireModel,
   _reasoningEffort?: string,
-): AnthropicRequest {
-  const messages = serializeMessages(options.messages, true) as AnthropicMessage[]
+  attachments?: AttachmentStore,
+): Promise<AnthropicRequest> {
+  const messages = await serializeMessages(options.messages, true, attachments) as AnthropicMessage[]
   const tools: AnthropicTool[] | undefined = options.tools?.map(tool => ({
     name: tool.name,
     description: tool.description,

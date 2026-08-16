@@ -41,4 +41,3 @@ export declare const MAX_RESPONSE_BYTES: number;
  *   reply is not a model listing.
  */
 export declare function discoverModels(request: LlmModelDiscoveryRequest, storedApiKey?: (provider: string | undefined) => Promise<string | undefined>): Promise<readonly NewApiDiscoveredModel[]>;
-//# sourceMappingURL=discovery.d.ts.map

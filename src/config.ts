@@ -18,7 +18,7 @@ import type { CredentialRef } from '@deepseek-ai/dsh-credentials'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import { resolveRetryPolicy, RetryPolicySchema } from '@deepseek-ai/dsh-llm'
 import type { ResolvedRetryPolicy, RetryPolicyConfig } from '@deepseek-ai/dsh-llm'
-import { MODALITIES, resolveModels, SUPPORTED_PROTOCOLS, SUPPORTED_THINKING_FORMATS, THINKING_LEVELS } from './catalog.ts'
+import { MODALITIES, resolveModels, SUPPORTED_PROTOCOLS, SUPPORTED_THINKING_FORMATS } from './catalog.ts'
 import type {
   NewApiCompatProfile,
   NewApiModality,
@@ -170,13 +170,16 @@ const compatProfile: z<NewApiCompatProfile> = z.object({
 })
 
 /**
- * Keys are the offered levels, values their wire spellings. A valueless key
- * (`off:`) survives validation because schemastery passes nullable data
- * through before any member schema runs.
+ * Keys are the offered levels, values their wire spellings. The five core
+ * levels are the out-of-the-box set; extra keys (e.g. the upstream's `off`)
+ * pass through rather than being promoted to a fixed enum. Nullable members
+ * survive validation because schemastery passes nullable data through before
+ * any member schema runs; the catalog rejects a stated-but-valueless non-`off`
+ * level and lets a valueless `off` mean "supported, send nothing".
  */
 const reasoningEfforts = z.dict(
   z.union([z.string(), z.const(null)]),
-  z.union(THINKING_LEVELS),
+  z.string(),
 ) as unknown as z<NewApiReasoningEfforts>
 
 /** The fields a `models` entry and a `modelOverrides` value share; only the id's home differs. */

@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "es2024",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "outDir": "lib/types/client",
+    "rootDir": "src/client",
+    "declaration": true,
+    "sourceMap": false,
+    "declarationMap": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noImplicitAny": false,
+    "lib": ["es2024", "dom"]
+  },
+  "include": ["src/client"]
+}

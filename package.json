@@ -10,6 +10,10 @@
       "types": "./lib/types/index.d.ts",
       "default": "./lib/index.js"
     },
+    "./client": {
+      "types": "./lib/types/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
     "./invariant": {
       "types": "./lib/types/invariant.d.ts",
       "default": "./lib/invariant.js"
@@ -19,28 +23,49 @@
   },
   "files": [
     "lib/index.js",
+    "lib/client.js",
     "lib/invariant.js",
     "cordis.patch.yml",
     "lib/types/**/*.d.ts"
   ],
   "license": "MIT",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && tsdown",
+    "build:client": "tsc -p tsconfig.client.json && node scripts/build-client.mjs"
+  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-primitives"
+      ],
+      "platform": "web"
     }
   },
   "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
     "@deepseek-ai/dsh-attachment": "^0.0.1-rc.1",
     "@deepseek-ai/dsh-credentials": "^0.0.1-rc.1",
-    "@deepseek-ai/dsh-launch-environment": "^0.0.1-rc.3",
     "@deepseek-ai/dsh-invariants": "^0.0.1-rc.1",
+    "@deepseek-ai/dsh-launch-environment": "^0.0.1-rc.3",
     "@deepseek-ai/dsh-llm": "^0.0.1-rc.1",
     "@deepseek-ai/dsh-settings": "^0.0.1-rc.1",
-    "@deepseek-ai/dsh-timeout": "^0.0.1-rc.1",
-    "@deepseek-ai/cordis": "^4.0.1"
+    "@deepseek-ai/dsh-timeout": "^0.0.1-rc.1"
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "^3.18.1",
     "eventsource-parser": "^3.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "@types/react": "^19.2.18",
+    "tsdown": "^0.22.14",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
   }
 }

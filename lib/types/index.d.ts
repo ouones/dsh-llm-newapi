@@ -19,8 +19,11 @@
  *         # Optional: force a protocol for models the gateway does not advertise.
  *         api: openai-completions
  *         reasoningEfforts:
- *           off:
+ *           low: low
+ *           medium: medium
  *           high: high
+ *           xhigh: xhigh
+ *           max: max
  *         compat:
  *           # Forced defaults: supportsDeveloperRole: false, supportsStore: false,
  *           # maxTokensField: max_tokens. Override only when the upstream accepts more.
@@ -38,4 +41,3 @@ export declare const name = "llm-newapi";
 export declare const inject: string[];
 /** Register one New API adapter for all configured provider routes. */
 export declare function apply(ctx: Context, config: Config): void;
-//# sourceMappingURL=index.d.ts.map

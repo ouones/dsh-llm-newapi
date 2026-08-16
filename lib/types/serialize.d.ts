@@ -3,13 +3,15 @@
  * openai-completions and anthropic-messages routes. User text is joined;
  * assistant text becomes `content` and tool calls become `tool_calls` /
  * `tool_use` blocks; tool results become separate tool messages / `tool_result`
- * blocks. Core image blocks are rejected explicitly because both wire routes
- * are text-only; unknown declaration-merged block types retain the adapter's
+ * blocks. Image blocks read their bytes through the optional durable
+ * attachment service and become OpenAI `image_url` parts or Anthropic `image`
+ * blocks; unknown declaration-merged block types retain the adapter's
  * documented extension fallback.
  *
  * @module dsh-llm-newapi/serialize
  */
 import type { GenerateOptions } from '@deepseek-ai/dsh-llm';
+import type { AttachmentStore } from '@deepseek-ai/dsh-attachment';
 import type { NewApiCompatProfile } from './catalog.ts';
 import type { AnthropicRequest, WireRequest } from './types.ts';
 /** Wire facts one request is serialized against; the adapter resolves them per model. */
@@ -32,9 +34,10 @@ export interface WireModel {
  * @param options - the harness request (model, history, system, tools, sampling).
  * @param model - the resolved wire facts for this model.
  * @param reasoningEffort - the wire spelling of the selected reasoning level, when dispatch resolved one.
+ * @param attachments - the durable attachment store, required when any message carries an image.
  * @returns the chat-completions request body.
  */
-export declare function serializeChatRequest(options: GenerateOptions, model: WireModel, reasoningEffort?: string): WireRequest;
+export declare function serializeChatRequest(options: GenerateOptions, model: WireModel, reasoningEffort?: string, attachments?: AttachmentStore): Promise<WireRequest>;
 /**
  * Build the full Anthropic messages request. Always streaming; optional fields
  * are omitted rather than sent as null. The `anthropic-version` header is the
@@ -43,7 +46,7 @@ export declare function serializeChatRequest(options: GenerateOptions, model: Wi
  * @param options - the harness request (model, history, system, tools, sampling).
  * @param model - the resolved wire facts for this model.
  * @param _reasoningEffort - unused by the Anthropic wire; accepted for a uniform adapter dispatch signature.
+ * @param attachments - the durable attachment store, required when any message carries an image.
  * @returns the messages request body.
  */
-export declare function serializeAnthropicRequest(options: GenerateOptions, model: WireModel, _reasoningEffort?: string): AnthropicRequest;
-//# sourceMappingURL=serialize.d.ts.map
+export declare function serializeAnthropicRequest(options: GenerateOptions, model: WireModel, _reasoningEffort?: string, attachments?: AttachmentStore): Promise<AnthropicRequest>;

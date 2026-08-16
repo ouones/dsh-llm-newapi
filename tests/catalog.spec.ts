@@ -171,22 +171,20 @@ describe('reasoning efforts', () => {
   }
 
   it('translates a declared dict into an explicit thinkingLevelMap', () => {
-    const model = declared({ off: null, high: 'high' })
+    const model = declared({ low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh', max: 'max' })
     expect(model.reasoning).toBe(true)
-    // `off` is supported by sending nothing, so it stays out of the map;
-    // every other undeclared level is pinned null (unsupported).
     expect(model.thinkingLevelMap).toEqual({
-      minimal: null,
-      low: null,
-      medium: null,
+      low: 'low',
+      medium: 'medium',
       high: 'high',
-      xhigh: null,
-      max: null,
+      xhigh: 'xhigh',
+      max: 'max',
     })
   })
 
-  it('keeps a declared off wire value in the map', () => {
-    expect(declared({ off: 'none', high: 'high' }).thinkingLevelMap?.off).toBe('none')
+  it('retains a declared wire value in the map', () => {
+    expect(declared({ high: 'boost', max: 'extreme' }).thinkingLevelMap?.high).toBe('boost')
+    expect(declared({ high: 'boost', max: 'extreme' }).thinkingLevelMap?.max).toBe('extreme')
   })
 
   it('disables reasoning with false', () => {
@@ -200,6 +198,18 @@ describe('reasoning efforts', () => {
     expect(modelOf({}, [discovered({ reasoning: false })]).reasoning).toBe(false)
   })
 
+  it('inhibits a discovered reasoning model to the default five levels', () => {
+    const model = modelOf({}, [discovered({ reasoning: true })])
+    expect(model.reasoning).toBe(true)
+    expect(model.thinkingLevelMap).toEqual({
+      low: 'low',
+      medium: 'medium',
+      high: 'high',
+      xhigh: 'xhigh',
+      max: 'max',
+    })
+  })
+
   it('reports no reasoning for a model nothing describes', () => {
     expect(modelOf({ api: 'openai-completions', models: [{ id: 'm', contextWindow: 1, maxTokens: 1 }] }).reasoning)
       .toBe(false)
@@ -210,13 +220,34 @@ describe('reasoning efforts', () => {
     expect(() => declared(null as never)).toThrow(/empty reasoningEfforts/)
   })
 
-  it('rejects a dict offering no level beyond off', () => {
-    expect(() => declared({ off: null })).toThrow(/offers no level beyond "off"/)
-    expect(() => declared({ off: 'none' })).toThrow(/offers no level beyond "off"/)
+  it('accepts a non-core pass-through key instead of rejecting it', () => {
+    // Docs: preserve the upstream's authoritative optional list rather than
+    // promoting a fixed core enum, so an unknown key (e.g. `turbo`) is kept.
+    const m = declared({ turbo: 'turbo' } as never)
+    expect(m.reasoning).toBe(true)
+    expect(m.thinkingLevelMap?.turbo).toBe('turbo')
+    // The undeclared core levels stay pinned unsupported.
+    expect(m.thinkingLevelMap?.low).toBeNull()
   })
 
-  it('rejects a non-off level left without a wire value', () => {
-    expect(() => declared({ high: null })).toThrow(/only "off" may leave it empty/)
+  it('keeps a declared non-core level (e.g. off) as a pass-through option', () => {
+    // Docs: preserve the upstream's authoritative optional list, including
+    // `off`, rather than promoting a fixed core enum. `off` supports "send
+    // nothing" (null wire); extra spellings pass their value through.
+    const model = declared({ off: null, max: 'max' })
+    expect(model.reasoning).toBe(true)
+    expect(model.thinkingLevelMap?.off).toBeNull()
+    expect(model.thinkingLevelMap?.max).toBe('max')
+    // The undeclared core levels stay pinned unsupported.
+    expect(model.thinkingLevelMap?.low).toBeNull()
+  })
+
+  it('lets a declared off with an explicit wire value pass that value through', () => {
+    expect(declared({ off: 'none', max: 'max' }).thinkingLevelMap?.off).toBe('none')
+  })
+
+  it('rejects a declared level left without a wire value', () => {
+    expect(() => declared({ high: null })).toThrow(/needs the wire value dispatch/)
   })
 
   it('rejects an empty string wire', () => {
@@ -481,7 +512,7 @@ describe('modelInfo', () => {
 describe('catalog constants', () => {
   it('declares the modalities, thinking levels, formats, and protocols', () => {
     expect(MODALITIES).toEqual(['text', 'image'])
-    expect(THINKING_LEVELS).toEqual(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
+    expect(THINKING_LEVELS).toEqual(['low', 'medium', 'high', 'xhigh', 'max'])
     expect(SUPPORTED_THINKING_FORMATS).toEqual([
       'openai',
       'deepseek',

@@ -46,10 +46,22 @@ export interface WireDeveloperMessage {
   content: string
 }
 
-/** User-role message: a single string of user input. */
+/** One content part of an OpenAI vision user message. */
+export interface WireImagePart {
+  type: 'image_url'
+  image_url: { url: string }
+}
+
+/** One text part of an OpenAI vision user message. */
+export interface WireTextPart {
+  type: 'text'
+  text: string
+}
+
+/** User-role message: a single string, or an array of vision parts when it carries an image. */
 export interface WireUserMessage {
   role: 'user'
-  content: string
+  content: string | (WireTextPart | WireImagePart)[]
 }
 
 /** Tool-role message: the result of one tool call, keyed by its call id. */
@@ -179,12 +191,13 @@ export interface AnthropicMessage {
  */
 export type AnthropicContentBlock =
   | { type: 'text'; text: string }
+  | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
   | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
   | {
     type: 'tool_result'
     tool_use_id: string
-    /** `content` must be a string or a list of text blocks; `is_error` marks a failed call. */
-    content: string | { type: 'text'; text: string }[]
+    /** `content` must be a string or a list of content blocks (text, and image on vision routes); `is_error` marks a failed call. */
+    content: string | AnthropicContentBlock[]
     is_error?: boolean
   }
   | { type: 'thinking'; thinking: string; signature?: string }

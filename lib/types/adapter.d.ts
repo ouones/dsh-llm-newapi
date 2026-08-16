@@ -12,6 +12,7 @@
 import { LlmAdapter } from '@deepseek-ai/dsh-llm';
 import type { GenerateOptions, LlmModelInfo, LlmProviderInfo, LlmResolvedModelInfo, ResolvedRetryPolicy, StreamChunk } from '@deepseek-ai/dsh-llm';
 import type { AttachmentStore } from '@deepseek-ai/dsh-attachment';
+import { type NewApiModel } from './catalog.ts';
 import type { ResolvedNewApiProviderProfile } from './config.ts';
 /** Constructor options for {@link NewApiAdapter}: the resolution hooks the plugin owns. */
 export interface NewApiAdapterOptions {
@@ -26,6 +27,11 @@ export interface NewApiAdapterOptions {
     /** Resolve the optional durable attachment service at request time. */
     resolveAttachments?: () => AttachmentStore | undefined;
 }
+/** Resolve the harness effort against the model's offered levels and wire spellings. */
+export declare function resolveReasoningEffort(model: NewApiModel, profile: ResolvedNewApiProviderProfile, requested: string | undefined): {
+    wire: string | undefined;
+    offered: boolean;
+};
 /**
  * New API-backed adapter. Each operation reads the current profiles, so a
  * configuration change reaches the next request without a restart; model
@@ -50,4 +56,3 @@ export declare class NewApiAdapter extends LlmAdapter {
     resolveModel(provider: string, model: string, _signal?: AbortSignal): Promise<LlmResolvedModelInfo>;
     stream(options: GenerateOptions): AsyncIterable<StreamChunk>;
 }
-//# sourceMappingURL=adapter.d.ts.map

@@ -75,4 +75,3 @@ export declare function translateChat(payloads: AsyncIterable<string>): AsyncGen
  *   deferred to the `message_stop` event, so no chunk follows `finish`.
  */
 export declare function translateAnthropic(payloads: AsyncIterable<string>): AsyncGenerator<StreamChunk>;
-//# sourceMappingURL=stream.d.ts.map
